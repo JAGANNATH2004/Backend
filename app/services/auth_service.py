@@ -8,7 +8,14 @@ import jwt
 from fastapi import HTTPException
 from app.database import get_supabase, get_supabase_admin, get_authenticated_supabase
 from app.config import settings
-from app.models.auth import RegisterRequest, LoginRequest, AuthResponse, BusinessProfile, UpdateBusinessRequest
+from app.models.auth import (
+    RegisterRequest,
+    LoginRequest,
+    AuthResponse,
+    BusinessProfile,
+    UpdateBusinessRequest,
+    UpdateUserProfileRequest,
+)
 
 class AuthService:
     @staticmethod
@@ -277,29 +284,83 @@ class AuthService:
     @staticmethod
     def get_business_profile(user_id: str) -> BusinessProfile:
         db = get_supabase_admin()
+        user_row = {}
         try:
-            res = db.table("businesses").select("*").eq("id", user_id).execute()
-            if res.data and len(res.data) > 0:
-                row = res.data[0]
-                return BusinessProfile(
-                    id=user_id,
-                    shop_name=row.get("shop_name", "Vyapari Store"),
-                    owner_name=row.get("owner_name", "Shopkeeper"),
-                    category=row.get("category", "General Store"),
-                    preferred_language=row.get("preferred_language", "te"),
-                    phone=row.get("phone"),
-                    created_at=str(row.get("created_at", "")),
-                )
-        except Exception as e:
-            print(f"Warning: Failed to fetch business profile: {e}")
+            res_u = db.table("users").select("*").eq("id", user_id).execute()
+            if res_u.data and len(res_u.data) > 0:
+                user_row = res_u.data[0]
+        except Exception:
+            pass
+
+        biz_row = {}
+        try:
+            res_b = db.table("businesses").select("*").eq("id", user_id).execute()
+            if res_b.data and len(res_b.data) > 0:
+                biz_row = res_b.data[0]
+        except Exception:
+            pass
 
         return BusinessProfile(
             id=user_id,
-            shop_name="Vyapari Store",
-            owner_name="Shopkeeper",
-            category="General Store",
-            preferred_language="te",
+            shop_name=user_row.get("shop_name") or biz_row.get("shop_name") or "Vyapari Store",
+            owner_name=user_row.get("user_name") or biz_row.get("owner_name") or "Shopkeeper",
+            category=user_row.get("category") or biz_row.get("category") or "General Store",
+            preferred_language=user_row.get("preferred_language") or biz_row.get("preferred_language") or "en",
+            phone=user_row.get("mobile_no") or biz_row.get("phone") or "",
+            email_id=user_row.get("email_id") or "",
+            created_at=str(user_row.get("created_at") or biz_row.get("created_at") or ""),
         )
+
+    @staticmethod
+    def update_user_profile(user_id: str, req: UpdateUserProfileRequest) -> BusinessProfile:
+        db = get_supabase_admin()
+        user_updates = {}
+        biz_updates = {}
+
+        if req.user_name is not None and req.user_name.strip():
+            clean_name = req.user_name.strip()
+            user_updates["user_name"] = clean_name
+            biz_updates["owner_name"] = clean_name
+
+        if req.shop_name is not None and req.shop_name.strip():
+            clean_shop = req.shop_name.strip()
+            user_updates["shop_name"] = clean_shop
+            biz_updates["shop_name"] = clean_shop
+
+        if req.mobile_no is not None and req.mobile_no.strip():
+            clean_mobile = AuthService._clean_mobile(req.mobile_no)
+            user_updates["mobile_no"] = clean_mobile
+            biz_updates["phone"] = clean_mobile
+
+        if req.email_id is not None:
+            user_updates["email_id"] = req.email_id.strip()
+
+        if req.password is not None and len(req.password.strip()) >= 6:
+            user_updates["password_hash"] = AuthService._hash_password(req.password.strip())
+
+        if req.category is not None:
+            user_updates["category"] = req.category
+            biz_updates["category"] = req.category
+
+        if req.preferred_language is not None:
+            user_updates["preferred_language"] = req.preferred_language
+            biz_updates["preferred_language"] = req.preferred_language
+
+        if user_updates:
+            user_updates["updated_at"] = datetime.utcnow().isoformat()
+            try:
+                db.table("users").update(user_updates).eq("id", user_id).execute()
+            except Exception as e:
+                print(f"Warning updating users table: {e}")
+
+        if biz_updates:
+            biz_updates["updated_at"] = datetime.utcnow().isoformat()
+            try:
+                db.table("businesses").update(biz_updates).eq("id", user_id).execute()
+            except Exception as e:
+                print(f"Warning updating businesses table: {e}")
+
+        return AuthService.get_business_profile(user_id)
 
     @staticmethod
     def update_business_profile(user_id: str, req: UpdateBusinessRequest) -> BusinessProfile:
@@ -315,6 +376,8 @@ class AuthService:
             update_data["preferred_language"] = req.preferred_language
         if req.phone is not None:
             update_data["phone"] = req.phone
+        if req.email_id is not None:
+            update_data["email_id"] = req.email_id
 
         if update_data:
             try:
