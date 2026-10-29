@@ -14,6 +14,12 @@ class VoiceInterpretRequest(BaseModel):
     language: str = "te"  # "te" or "en"
     available_products: List[ProductContext] = []
 
+class AudioInterpretRequest(BaseModel):
+    audio_base64: str
+    mime_type: str = "audio/mp4"  # or "audio/aac", "audio/wav"
+    language: str = "te"  # "te" or "en"
+    available_products: List[ProductContext] = []
+
 class VoiceInterpretResponse(BaseModel):
     action_type: str  # add_stock, record_sale, check_stock, check_sales, check_reorders, unknown
     product_id: Optional[str] = None
