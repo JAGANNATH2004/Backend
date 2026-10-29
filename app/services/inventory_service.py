@@ -173,10 +173,10 @@ class InventoryService:
             "product_id": req.product_id,
             "type": "purchase",
             "quantity": req.quantity,
-            "unit_price": purchase_price,
-            "total_amount": total_amount,
-            "balance_before": prev_stock,
-            "balance_after": new_stock,
+            "unit": product.unit,
+            "price": purchase_price,
+            "previous_stock": prev_stock,
+            "new_stock": new_stock,
             "notes": req.notes or f"Stock added: {req.quantity} {product.unit}",
         }
         mov_res = supabase.table("stock_movements").insert(movement_row).execute()
@@ -226,10 +226,10 @@ class InventoryService:
             "product_id": req.product_id,
             "type": "sale",
             "quantity": req.quantity,
-            "unit_price": selling_price,
-            "total_amount": total_amount,
-            "balance_before": prev_stock,
-            "balance_after": new_stock,
+            "unit": product.unit,
+            "price": selling_price,
+            "previous_stock": prev_stock,
+            "new_stock": new_stock,
             "notes": req.notes or f"Customer sale: {req.quantity} {product.unit}",
         }
         mov_res = supabase.table("stock_movements").insert(movement_row).execute()
@@ -295,10 +295,10 @@ class InventoryService:
                     type=r.get("type", "sale"),
                     quantity=float(r.get("quantity", 0.0)),
                     unit=p_unit or "Units",
-                    price=float(r.get("unit_price", 0.0)),
-                    previous_stock=float(r.get("balance_before", 0.0)),
-                    new_stock=float(r.get("balance_after", 0.0)),
-                    timestamp=str(r.get("created_at", "")),
+                    price=float(r.get("price") or r.get("unit_price") or 0.0),
+                    previous_stock=float(r.get("previous_stock") or r.get("balance_before") or 0.0),
+                    new_stock=float(r.get("new_stock") or r.get("balance_after") or 0.0),
+                    timestamp=str(r.get("created_at") or r.get("timestamp") or ""),
                     notes=r.get("notes") or "",
                 )
             )

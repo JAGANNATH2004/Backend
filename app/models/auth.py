@@ -11,23 +11,29 @@ class BusinessProfile(BaseModel):
     created_at: Optional[str] = None
 
 class RegisterRequest(BaseModel):
-    email: str
+    mobile_no: Optional[str] = None
+    user_name: Optional[str] = None
     password: str = Field(min_length=6)
     shop_name: str = "Vyapari Store"
-    owner_name: str = "Shopkeeper"
+    owner_name: Optional[str] = "Shopkeeper"
     category: str = "General Store"
     preferred_language: str = "te"
     phone: Optional[str] = None
+    email: Optional[str] = None
 
 class LoginRequest(BaseModel):
-    email: str
+    mobile_no: Optional[str] = None
+    email: Optional[str] = None
     password: str
 
 class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user_id: str
-    email: str
+    mobile_no: Optional[str] = None
+    user_name: Optional[str] = None
+    shop_name: Optional[str] = None
+    email: Optional[str] = None
     business: BusinessProfile
 
 class UpdateBusinessRequest(BaseModel):

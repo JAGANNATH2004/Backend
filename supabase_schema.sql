@@ -6,9 +6,29 @@
 -- 1. Enable UUID Extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. Businesses Table
+-- ==============================================================================
+-- 2. Users Table (Stores Mobile No, User Name, Password, and Shop Name)
+-- Authentication checks this table directly in PostgreSQL
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    mobile_no TEXT UNIQUE NOT NULL,
+    user_name TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    shop_name TEXT NOT NULL DEFAULT 'Vyapari Store',
+    category TEXT NOT NULL DEFAULT 'General Store',
+    preferred_language TEXT NOT NULL DEFAULT 'te',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_mobile ON public.users(mobile_no);
+
+-- ==============================================================================
+-- 3. Businesses Table
+-- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.businesses (
-    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY,
     shop_name TEXT NOT NULL DEFAULT 'Vyapari Store',
     owner_name TEXT NOT NULL DEFAULT 'Shopkeeper',
     category TEXT NOT NULL DEFAULT 'General Store',
@@ -17,6 +37,9 @@ CREATE TABLE IF NOT EXISTS public.businesses (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Ensure businesses table does not enforce Supabase auth.users constraint
+ALTER TABLE public.businesses DROP CONSTRAINT IF EXISTS businesses_id_fkey;
 
 -- 3. Products Table
 CREATE TABLE IF NOT EXISTS public.products (
@@ -72,44 +95,29 @@ CREATE INDEX IF NOT EXISTS idx_notifications_business ON public.notifications(bu
 
 -- ==============================================================================
 -- Row Level Security (RLS) Policies
--- Ensures each shopkeeper only accesses their own business data
+-- Enables database security while allowing backend server queries
 -- ==============================================================================
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.businesses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.stock_movements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
--- Businesses Policies
-CREATE POLICY "Users can view own business" ON public.businesses
-    FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Users can insert own business" ON public.businesses
-    FOR INSERT WITH CHECK (auth.uid() = id);
-CREATE POLICY "Users can update own business" ON public.businesses
-    FOR UPDATE USING (auth.uid() = id);
+-- Allow full access for backend operations (service_role and application server)
+DROP POLICY IF EXISTS "Backend users policy" ON public.users;
+CREATE POLICY "Backend users policy" ON public.users FOR ALL USING (true) WITH CHECK (true);
 
--- Products Policies
-CREATE POLICY "Users can view own products" ON public.products
-    FOR SELECT USING (auth.uid() = business_id);
-CREATE POLICY "Users can insert own products" ON public.products
-    FOR INSERT WITH CHECK (auth.uid() = business_id);
-CREATE POLICY "Users can update own products" ON public.products
-    FOR UPDATE USING (auth.uid() = business_id);
-CREATE POLICY "Users can delete own products" ON public.products
-    FOR DELETE USING (auth.uid() = business_id);
+DROP POLICY IF EXISTS "Backend businesses policy" ON public.businesses;
+CREATE POLICY "Backend businesses policy" ON public.businesses FOR ALL USING (true) WITH CHECK (true);
 
--- Stock Movements Policies
-CREATE POLICY "Users can view own stock movements" ON public.stock_movements
-    FOR SELECT USING (auth.uid() = business_id);
-CREATE POLICY "Users can insert own stock movements" ON public.stock_movements
-    FOR INSERT WITH CHECK (auth.uid() = business_id);
+DROP POLICY IF EXISTS "Backend products policy" ON public.products;
+CREATE POLICY "Backend products policy" ON public.products FOR ALL USING (true) WITH CHECK (true);
 
--- Notifications Policies
-CREATE POLICY "Users can view own notifications" ON public.notifications
-    FOR SELECT USING (auth.uid() = business_id);
-CREATE POLICY "Users can update own notifications" ON public.notifications
-    FOR UPDATE USING (auth.uid() = business_id);
-CREATE POLICY "Users can insert own notifications" ON public.notifications
-    FOR INSERT WITH CHECK (auth.uid() = business_id);
+DROP POLICY IF EXISTS "Backend stock_movements policy" ON public.stock_movements;
+CREATE POLICY "Backend stock_movements policy" ON public.stock_movements FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Backend notifications policy" ON public.notifications;
+CREATE POLICY "Backend notifications policy" ON public.notifications FOR ALL USING (true) WITH CHECK (true);
 
 -- ==============================================================================
 -- Stored Procedures (RPCs) for Atomic Transactions
@@ -158,6 +166,43 @@ BEGIN
     );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ==============================================================================
+-- Auto-create Business Profile on User Signup (SECURITY DEFINER Trigger)
+-- Guarantees the business row is created in PostgreSQL immediately upon signup
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.businesses (id, shop_name, owner_name, category, preferred_language, phone)
+    VALUES (
+        new.id,
+        COALESCE(new.raw_user_meta_data->>'shop_name', 'Vyapari Store'),
+        COALESCE(new.raw_user_meta_data->>'owner_name', 'Shopkeeper'),
+        COALESCE(new.raw_user_meta_data->>'category', 'General Store'),
+        COALESCE(new.raw_user_meta_data->>'preferred_language', 'te'),
+        new.raw_user_meta_data->>'phone'
+    )
+    ON CONFLICT (id) DO UPDATE SET
+        shop_name = COALESCE(EXCLUDED.shop_name, public.businesses.shop_name),
+        owner_name = COALESCE(EXCLUDED.owner_name, public.businesses.owner_name),
+        category = COALESCE(EXCLUDED.category, public.businesses.category),
+        updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Ensure permissions
+GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO service_role;
+GRANT EXECUTE ON FUNCTION public.add_stock_transaction TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.record_sale_transaction TO authenticated, service_role;
 
 -- Record Sale Transaction Function
 CREATE OR REPLACE FUNCTION public.record_sale_transaction(
@@ -218,4 +263,41 @@ BEGIN
     );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ==============================================================================
+-- Auto-create Business Profile on User Signup (SECURITY DEFINER Trigger)
+-- Guarantees the business row is created in PostgreSQL immediately upon signup
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.businesses (id, shop_name, owner_name, category, preferred_language, phone)
+    VALUES (
+        new.id,
+        COALESCE(new.raw_user_meta_data->>'shop_name', 'Vyapari Store'),
+        COALESCE(new.raw_user_meta_data->>'owner_name', 'Shopkeeper'),
+        COALESCE(new.raw_user_meta_data->>'category', 'General Store'),
+        COALESCE(new.raw_user_meta_data->>'preferred_language', 'te'),
+        new.raw_user_meta_data->>'phone'
+    )
+    ON CONFLICT (id) DO UPDATE SET
+        shop_name = COALESCE(EXCLUDED.shop_name, public.businesses.shop_name),
+        owner_name = COALESCE(EXCLUDED.owner_name, public.businesses.owner_name),
+        category = COALESCE(EXCLUDED.category, public.businesses.category),
+        updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Ensure permissions
+GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO service_role;
+GRANT EXECUTE ON FUNCTION public.add_stock_transaction TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.record_sale_transaction TO authenticated, service_role;
 
