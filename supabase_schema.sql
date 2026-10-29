@@ -16,12 +16,14 @@ CREATE TABLE IF NOT EXISTS public.users (
     user_name TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     shop_name TEXT NOT NULL DEFAULT 'Vyapari Store',
+    email_id TEXT DEFAULT '',
     category TEXT NOT NULL DEFAULT 'General Store',
-    preferred_language TEXT NOT NULL DEFAULT 'te',
+    preferred_language TEXT NOT NULL DEFAULT 'en',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_id TEXT DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_users_mobile ON public.users(mobile_no);
 
 -- ==============================================================================
@@ -32,14 +34,16 @@ CREATE TABLE IF NOT EXISTS public.businesses (
     shop_name TEXT NOT NULL DEFAULT 'Vyapari Store',
     owner_name TEXT NOT NULL DEFAULT 'Shopkeeper',
     category TEXT NOT NULL DEFAULT 'General Store',
-    preferred_language TEXT NOT NULL DEFAULT 'te',
+    preferred_language TEXT NOT NULL DEFAULT 'en',
     phone TEXT,
+    email_id TEXT DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Ensure businesses table does not enforce Supabase auth.users constraint
 ALTER TABLE public.businesses DROP CONSTRAINT IF EXISTS businesses_id_fkey;
+ALTER TABLE public.businesses ADD COLUMN IF NOT EXISTS email_id TEXT DEFAULT '';
 
 -- 3. Products Table
 CREATE TABLE IF NOT EXISTS public.products (
