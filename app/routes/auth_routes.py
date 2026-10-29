@@ -1,6 +1,13 @@
 from fastapi import APIRouter, Depends
 from app.database import get_current_user_id
-from app.models.auth import RegisterRequest, LoginRequest, AuthResponse, BusinessProfile, UpdateBusinessRequest
+from app.models.auth import (
+    RegisterRequest,
+    LoginRequest,
+    AuthResponse,
+    BusinessProfile,
+    UpdateBusinessRequest,
+    UpdateUserProfileRequest,
+)
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/api", tags=["Authentication & Business"])
@@ -16,6 +23,10 @@ def login(req: LoginRequest):
 @router.get("/auth/me", response_model=BusinessProfile)
 def get_me(user_id: str = Depends(get_current_user_id)):
     return AuthService.get_business_profile(user_id)
+
+@router.put("/auth/profile", response_model=BusinessProfile)
+def update_profile(req: UpdateUserProfileRequest, user_id: str = Depends(get_current_user_id)):
+    return AuthService.update_user_profile(user_id, req)
 
 @router.get("/business/me", response_model=BusinessProfile)
 def get_business(user_id: str = Depends(get_current_user_id)):
