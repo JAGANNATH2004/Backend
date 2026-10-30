@@ -79,8 +79,8 @@ class GeminiService:
         )
 
         model = settings.GEMINI_MODEL
-        if not model or model == "gemini-2.0-flash":
-            model = "gemini-2.5-flash-lite"
+        if not model or "2.0" in model or "2.5" in model:
+            model = "gemini-3.5-flash-lite"
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.GEMINI_API_KEY}"
 
@@ -109,9 +109,9 @@ class GeminiService:
 
         async with httpx.AsyncClient(timeout=25.0) as client:
             resp = await client.post(url, json=payload)
-            if resp.status_code != 200 and model != "gemini-1.5-flash":
-                # Fallback to gemini-1.5-flash
-                fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={settings.GEMINI_API_KEY}"
+            if resp.status_code != 200 and model != "gemini-flash-latest":
+                # Fallback to gemini-flash-latest
+                fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={settings.GEMINI_API_KEY}"
                 resp = await client.post(fallback_url, json=payload)
 
             if resp.status_code == 200:
@@ -228,7 +228,9 @@ class GeminiService:
             f"User preferred language: {'Telugu' if is_telugu else 'English'}"
         )
 
-        model = settings.GEMINI_MODEL or "gemini-2.0-flash-lite"
+        model = settings.GEMINI_MODEL
+        if not model or "2.0" in model or "2.5" in model:
+            model = "gemini-3.5-flash-lite"
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.GEMINI_API_KEY}"
 
         payload = {
