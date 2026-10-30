@@ -79,8 +79,8 @@ class GeminiService:
         )
 
         model = settings.GEMINI_MODEL
-        if not model or model == "gemini-2.0-flash-lite":
-            model = "gemini-2.0-flash"
+        if not model or model == "gemini-2.0-flash":
+            model = "gemini-2.5-flash-lite"
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.GEMINI_API_KEY}"
 
